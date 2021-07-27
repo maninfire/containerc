@@ -1,3 +1,4 @@
+LINUX_LIBCAP = -lcap
 cc = gcc -g
 prom = containerc
 obj = main.o netlink.o veth.o utils.o
@@ -10,7 +11,7 @@ $(prom): $(obj)
 		echo "ROOTFS Is Not Exist"; \
 		exit 1; \
 	fi
-	$(cc) -o $(prom) $(obj)
+	$(cc) -o $(prom) $(obj) -lcap -Wall
 
 utils.o: lib/utils.c
 	$(cc) -c $< -o $@
@@ -22,7 +23,7 @@ netlink.o: lib/netlink.c lib/netlink.h
 	$(cc) -c $< -o $@
 
 main.o: main.c lib/netlink.h
-	$(cc) -c $< -o $@
+	$(cc) -c $<  -o $@ 
 
 clean:
 	rm -rf containerc main.o netlink.o veth.o utils.o containerc_roots
