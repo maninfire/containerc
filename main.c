@@ -134,7 +134,7 @@ static void setnewenv()
     }
 }
 
-static int container_pid(void *param){
+static int container_root(void *param){
     struct container_run_para *cparam = (struct container_run_para*)param;    
     //设置主机名
     //sethostname(cparam->hostname, strlen(cparam->hostname));
@@ -164,7 +164,7 @@ static int container_run(void *param)
     //设置主机名
     cap_t caps;
     pid_t child_pid;
-    printf("在子进程中!\n");
+    printf("sub process !\n");
     set_uid_map(getpid(), 0, 1000, 1);
     set_gid_map(getpid(), 0, 1000, 1);
     printf("eUID = %ld;  eGID = %ld;  ",
@@ -184,7 +184,7 @@ static int container_run(void *param)
     // para.ifindex = veth_ifindex("veth1");
     // para.container_ip = ipv4;
 
-    child_pid = clone(container_pid,
+    child_pid = clone(container_root,
                       container_stack_pid + sizeof(container_stack_pid),
                       CLONE_NEWPID | CLONE_NEWNET | CLONE_NEWNS | CLONE_NEWUTS | SIGCHLD, 
                       &para);
