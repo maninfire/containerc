@@ -9,6 +9,14 @@
 #include "lib/veth.h"
 #include "lib/utils.h"
 
+#include <sys/capability.h>
+#include <sys/types.h>
+
+
+
+#include <signal.h>
+
+
 #define NOT_OK_EXIT(code, msg); {if(code == -1){perror(msg); exit(-1);} }
 
 struct container_run_para {
@@ -23,11 +31,12 @@ char* const container_args[] = {
     NULL
 };
 
-static char container_stack[1024*1024]; //子进程栈空间大小 1M
+char* const child_args[] = {
+  "/bin/bash",
+  NULL
+};
 
-/**
- * 设置挂载点
- */
+
 static void mount_root() 
 {
     mount("none", "/", NULL, MS_REC|MS_PRIVATE, NULL);
@@ -76,6 +85,42 @@ static void mount_root()
     }
 }
 
+static char container_stack[1024*1024];  //子进程栈空间大小 1M
+
+static char container_stack_pid[1024*1024]; 
+/**
+ * 设置挂载点
+ */
+
+void set_uid_map(pid_t pid, int inside_id, int outside_id, int length) {
+    char path[256];
+    sprintf(path, "/proc/%d/uid_map", getpid());
+    FILE* uid_map = fopen(path, "w");
+    fprintf(uid_map, "%d %d %d", inside_id, outside_id, length);
+    fclose(uid_map);
+}
+void set_gid_map(pid_t pid, int inside_id, int outside_id, int length) {
+    char path[256];
+    sprintf(path, "/proc/%d/gid_map", getpid());
+    FILE* gid_map = fopen(path, "w");
+    fprintf(gid_map, "%d %d %d", inside_id, outside_id, length);
+    fclose(gid_map);
+}
+int child_main(void* args) {
+    cap_t caps;
+    printf("在子进程中!\n");
+    set_uid_map(getpid(), 0, 1000, 1);
+    set_gid_map(getpid(), 0, 1000, 1);
+    printf("eUID = %ld;  eGID = %ld;  ",
+            (long) geteuid(), (long) getegid());
+    //caps = cap_get_proc();
+    //printf("capabilities: %s\n", cap_to_text(caps, NULL));
+    mount_root();
+    execv(child_args[0], child_args);
+    return 1;
+}
+
+
 static void setnewenv() 
 {
     char *penv = getenv("PATH");
@@ -89,28 +134,61 @@ static void setnewenv()
     }
 }
 
+static int container_pid(void *param){
+    struct container_run_para *cparam = (struct container_run_para*)param;    
+    //设置主机名
+    //sethostname(cparam->hostname, strlen(cparam->hostname));
+
+    //设置环境变量
+    //setnewenv();
+    mount_root();
+
+    sleep(1);
+
+    // veth_newname("veth1", "eth0");
+    // veth_up("eth0");        
+    // veth_config_ipv4("eth0", cparam->container_ip);
+
+    execv(container_args[0], container_args);
+    return 0;
+}
+
 /**
  * 容器启动 -- 实际为子进程启动
  */
 static int container_run(void *param)
 {    
-    struct container_run_para *cparam = (struct container_run_para*)param;    
+    struct container_run_para  para;
+        //获取container ip
+    char ipv4[32] = {0};
     //设置主机名
-    sethostname(cparam->hostname, strlen(cparam->hostname));
+    cap_t caps;
+    pid_t child_pid;
+    printf("在子进程中!\n");
+    set_uid_map(getpid(), 0, 1000, 1);
+    set_gid_map(getpid(), 0, 1000, 1);
+    printf("eUID = %ld;  eGID = %ld;  ",
+            (long) geteuid(), (long) getegid());
 
-    //设置环境变量
-    setnewenv();
-    mount_root();
-    sleep(1);
+    
+    // veth_create("veth0", "veth1");
+    // veth_up("veth0");
+    // /* ??veth0????docker?????? */
+    // veth_addbr("veth0", "docker0");
+    
+    
+    //  //获取container ip
+    // new_containerip(ipv4, sizeof(ipv4));
+    
+    // para.hostname = (char *)param;
+    // para.ifindex = veth_ifindex("veth1");
+    // para.container_ip = ipv4;
 
-
-    veth_newname("veth1", "eth0");
-    veth_up("eth0");        
-    veth_config_ipv4("eth0", cparam->container_ip);
-    /* 用新进程替换子进程上下文 */
-    execv(container_args[0], container_args);
-
-     //从这里开始的代码将不会被执行到，因为当前子进程已经被上面的sh替换掉了
+    child_pid = clone(container_pid,
+                      container_stack_pid + sizeof(container_stack_pid),
+                      CLONE_NEWPID | CLONE_NEWNET | CLONE_NEWNS | CLONE_NEWUTS | SIGCHLD, 
+                      &para);
+    waitpid(child_pid, NULL, 0);
 
     return 0;
 }
@@ -125,22 +203,10 @@ int main(int argc, char *argv[])
         printf("Usage: %s <child-hostname>\n", argv[0]);
         return -1;
     }
-    //获取docker0网卡ip地址
-    
-    veth_create("veth0", "veth1");
-    veth_up("veth0");
-    /* 将veth0加入到docker网桥中 */
-    veth_addbr("veth0", "docker0");
+    // //获取docker0网卡ip地址
     
     
-    //获取container ip
-    new_containerip(ipv4, sizeof(ipv4));
-    
-    para.hostname = argv[1];
-    para.ifindex = veth_ifindex("veth1");
-    para.container_ip = ipv4;
-    
-    /**
+ /**
      * 1、创建并启动子进程，调用该函数后，父进程将继续往后执行，也就是执行后面的waitpid
      * 2、栈是从高位向低位增长，所以这里要指向高位地址
      * 3、SIGCHLD 表示子进程退出后 会发送信号给父进程 与容器技术无关
@@ -148,16 +214,16 @@ int main(int argc, char *argv[])
      */
     child_pid = clone(container_run,
                       container_stack + sizeof(container_stack),
-                      /*CLONE_NEWUSER|*/
-                      CLONE_NEWPID|CLONE_NEWNET|CLONE_NEWNS|CLONE_NEWUTS| SIGCHLD,
-                      &para);
-
-    /* 将veth添加到新namespace中 */
-    veth_network_namespace("veth1", child_pid);
+                      CLONE_NEWUSER | SIGCHLD, 
+                      argv[1]);
+//|
+ //                     CLONE_NEWPID|CLONE_NEWNET|CLONE_NEWNS|CLONE_NEWUTS| SIGCHLD,
+    /* ??veth???????namespace?? */
+    //veth_network_namespace("veth1", child_pid);
     
-    NOT_OK_EXIT(child_pid, "clone");
+   // NOT_OK_EXIT(child_pid, "clone");
 
-    /* 等待子进程结束 */
+    /* ??????????? */
     waitpid(child_pid, NULL, 0);
 
     return 0;
