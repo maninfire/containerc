@@ -179,11 +179,8 @@ int en3get(){
 
     //nsenternew();
     //trave_dir("/sys", "containerc_roots/rootfs/dev", 1);
-    // if (mount("sysfs", "containerc_roots/rootfs/sys", "sysfs", 0, NULL)!=0) {
-    //     perror("sys");
-    // } 0000:00:11.0/0000:02:01.0/net
 
-    if (mount("/sys/devices/pci0000:00/", "./containerc_roots/rootfs/sys/devices/pci0000:00/", "none", MS_BIND, NULL)!=0){
+    if (mount("/sys/devices", "./containerc_roots/rootfs/sys/devices", "none", MS_BIND, NULL)!=0){
         perror("device ens33");
     }
 
@@ -266,9 +263,12 @@ void set_uid_map(pid_t pid, int inside_id, int outside_id, int length) {
 void set_gid_map(pid_t pid, int inside_id, int outside_id, int length) {
     char path[256];
     sprintf(path, "/proc/%d/gid_map", pid);
-    FILE* gid_map = fopen(path, "w");
-    fprintf(gid_map, "%d %d %d", inside_id, outside_id, length);
-    fclose(gid_map);
+    int fd = openat(AT_FDCWD, path, O_WRONLY);
+    if(fd)
+    write(fd, "0 1000 1", 8);
+    printf("gid_map fd %d %s %x\n",fd, path, AT_FDCWD);
+    //fprintf(gid_map, "%d %d %d", inside_id, outside_id, length);
+    close(fd);
 }
 
 
@@ -311,6 +311,13 @@ static int container_root(void *param){
     return 0;
 }
 
+
+void set_groups(){
+    int fd = openat(AT_FDCWD, "/proc/self/setgroups", O_WRONLY);
+    if(fd)
+    write(3, "deny", 4);
+    close(fd);
+}
 /**
  * 容器启动 -- 实际为子进程启动
  */
@@ -325,9 +332,12 @@ static int container_run(void *param)
     //设置主机名
     pid_t child_pid;
     pid_t pid = getpid();
+    
     list_caps();
     printf("sub process ! %d uid %d gid %d  gid_cap %x\n", pid, getuid(), getegid(), CAP_SETGID);
     
+
+    set_groups();
     set_uid_map(pid, 0, 1000, 1);
     set_gid_map(pid, 0, 1000, 1);
 
@@ -380,11 +390,11 @@ int main(int argc, char *argv[])
      * 4、创建各个namespace
      */
     container_run(argv[1]);
-    // //child_pid = clone(container_run,
+    // child_pid = clone(container_run,
     //                   container_stack + sizeof(container_stack),
     //                   CLONE_NEWUSER | SIGCHLD, 
     //                   argv[1]);
-//|
+
  //                     CLONE_NEWPID|CLONE_NEWNET|CLONE_NEWNS|CLONE_NEWUTS| SIGCHLD,
     /* ??veth???????namespace?? */
     //veth_network_namespace("veth1", child_pid);
@@ -392,7 +402,7 @@ int main(int argc, char *argv[])
    // NOT_OK_EXIT(child_pid, "clone");
 
     /* ??????????? */
-    //waitpid(child_pid, NULL, 0);
+    waitpid(child_pid, NULL, 0);
 
     return 0;
 }
