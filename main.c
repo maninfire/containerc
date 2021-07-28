@@ -42,171 +42,6 @@ char* const child_args[] = {
   "/bin/bash",
   NULL
 };
-//symlink
-int copy_dev(char * des_path, char *src_path){
-
-	int fd,fd2;
-    char buff[1024];
-    int len;
-
-	fd = open(src_path,O_RDWR|O_CREAT);
-	fd2 = open(des_path,O_RDWR|O_CREAT);
-	while(len = read(fd,buff,1024))
-	{
-		write(fd2,buff,len);
-	}
-	return 0;
-
-}
-
-static void trave_dir(char* path) {
-    DIR *d = NULL;
-    struct dirent *dp = NULL; /* readdir函数的返回值就存放在这个结构体中 */
-    struct stat st;    
-    char p[MAX_PATH_LEN] = {0};
-    char bp[MAX_PATH_LEN] = {0};
-    if(stat(path, &st) < 0 || !S_ISDIR(st.st_mode)) {
-        printf("invalid path: %s\n", path);
-        return;
-    }
-
-    if(!(d = opendir(path))) {
-        printf("opendir[%s] error: %m\n", path);
-        return;
-    }
-
-    while((dp = readdir(d)) != NULL) {
-        /* 把当前目录.，上一级目录..及隐藏文件都去掉，避免死循环遍历目录 */
-        if((!strncmp(dp->d_name, ".", 1)) || (!strncmp(dp->d_name, "..", 2)))
-            continue;
-
-        snprintf(p, sizeof(p) - 1, "%s/%s", path, dp->d_name);
-        snprintf(bp, sizeof(bp) - 1, "%s/%s", "containerc_roots/rootfs/dev", dp->d_name);
-        stat(p, &st);
-        if(!S_ISDIR(st.st_mode)) {
-            //printf("%s\n", bp);
-            mknod(bp, S_IFIFO|0666, 0);
-            if(mount(p, bp, "none", MS_BIND, NULL)){
-                printf("%s \n", bp);
-                perror("bind dev");
-            }
-        } else {
-            printf("dir %s/\n", dp->d_name);
-            mkdir(bp ,0775);
-        }
-    }
-    closedir(d);
-
-    return;
-}
-
-
-static void mount_root() 
-{
-    mount("none", "/", NULL, MS_REC|MS_PRIVATE, NULL);
-    //remount "/proc" to make sure the "top" and "ps" show container's information
-    if (mount("proc", "containerc_roots/rootfs/proc", "proc", 0, NULL) !=0 ) {
-        perror("proc");
-    }
-    if (mount("sysfs", "containerc_roots/rootfs/sys", "sysfs", 0, NULL)!=0) {
-        perror("sys");
-    }
-    if (mount("none", "containerc_roots/rootfs/tmp", "tmpfs", 0, NULL)!=0) {
-        perror("tmp");
-    }
-
-    // if(mount("/dev", "./containerc_roots/rootfs/dev", "none", MS_BIND, NULL)){
-    //     perror("bind dev");
-    // }
-    trave_dir("/dev");
-    // if (mount("udev", "containerc_roots/rootfs/dev", "devtmpfs", 0, NULL)!=0) {
-    //     perror("dev");
-    // }
-    if (mount("devpts", "containerc_roots/rootfs/dev/pts", "devpts", 0, NULL)!=0) {
-        perror("dev/pts");
-    }
-    
-    if (mount("shm", "containerc_roots/rootfs/dev/shm", "tmpfs", 0, NULL)!=0) {
-        perror("dev/shm");
-    }
-   
-    if (mount("tmpfs", "containerc_roots/rootfs/run", "tmpfs", 0, NULL)!=0) {
-        perror("run");
-    }
-    
-    /* 
-     * 模仿Docker的从外向容器里mount相关的配置文件 
-     * 你可以查看：/var/lib/docker/containers/<container_id>/目录，
-     * 你会看到docker的这些文件的。
-     */
-
-    if (mount("./containerc_roots/conf/hosts", "./containerc_roots/rootfs/etc/hosts", "none", MS_BIND, NULL)!=0 ||
-        mount("./containerc_roots/conf/hostname", "./containerc_roots/rootfs/etc/hostname", "none", MS_BIND, NULL)!=0 ||
-        mount("./containerc_roots/conf/resolv.conf", "./containerc_roots/rootfs/etc/resolv.conf", "none", MS_BIND, NULL)!=0 ) {
-        perror("conf 000");
-    }
-    /* 模仿docker run命令中的 -v, --volume=[] 参数干的事 */
-    if (mount("/tmp/t1", "./containerc_roots/rootfs/mnt", "none", MS_BIND, NULL)!=0) {
-        perror("mnt");
-    }
-    /* chroot 隔离目录 */
-    if (chdir("./containerc_roots/rootfs") != 0 || chroot("./") != 0){
-        perror("chdir/chroot");
-    }
-}
-
-static char container_stack[1024*1024];  //子进程栈空间大小 1M
-
-static char container_stack_pid[1024*1024]; 
-/**
- * 设置挂载点
- */
-
-void set_uid_map(pid_t pid, int inside_id, int outside_id, int length) {
-    char path[256];
-    sprintf(path, "/proc/%d/uid_map", pid);
-    FILE* uid_map = fopen(path, "w");
-    fprintf(uid_map, "%d %d %d", inside_id, outside_id, length);
-    fclose(uid_map);
-}
-void set_gid_map(pid_t pid, int inside_id, int outside_id, int length) {
-    char path[256];
-    sprintf(path, "/proc/%d/gid_map", pid);
-    FILE* gid_map = fopen(path, "w");
-    fprintf(gid_map, "%d %d %d", inside_id, outside_id, length);
-    fclose(gid_map);
-}
-
-int child_main(void* args) {
-    cap_t caps;
-    printf("在子进程中! %d \n", getpid());
-    pid_t pid = getpid();
-    set_uid_map(pid, 0, 1000, 1);
-    set_gid_map(pid, 0, 1000, 1);
-    printf("eUID = %ld;  eGID = %ld;  ",
-            (long) geteuid(), (long) getegid());
-    //caps = cap_get_proc();
-    //printf("capabilities: %s\n", cap_to_text(caps, NULL));
-    mount_root();
-    execv(child_args[0], child_args);
-    return 1;
-}
-
-
-static void setnewenv() 
-{
-    char *penv = getenv("PATH");
-    if (NULL == penv) {
-        setenv("PATH", "/bin/", 1);
-    } else {
-        char *new_path = malloc(sizeof(char)*(strlen(penv)+32));
-        sprintf(new_path, "%s:%s", penv, "/bin/");
-        setenv("PATH", new_path, 1);
-        free(new_path);
-    }
-}
-
-
 
 void list_caps() {
     int ret;
@@ -229,7 +64,6 @@ void list_caps() {
         printf("\n");
     }
 }
-
 
 int set_caps(struct __user_cap_data_struct cap_data[2]) {
     int ret = 0;
@@ -262,10 +96,200 @@ int set_all_cap(){
     list_caps();
 }
 
+//symlink
+int copy_dev(char * des_path, char *src_path){
+
+	int fd,fd2;
+    char buff[1024];
+    int len;
+
+	fd = open(src_path,O_RDWR|O_CREAT);
+	fd2 = open(des_path,O_RDWR|O_CREAT);
+	while(len = read(fd,buff,1024))
+	{
+		write(fd2,buff,len);
+	}
+	return 0;
+
+}
+
+static void trave_dir(char* path, char *dest_path, int type) {
+    DIR *d = NULL;
+    struct dirent *dp = NULL; /* readdir函数的返回值就存放在这个结构体中 */
+    struct stat st;    
+    char p[MAX_PATH_LEN] = {0};
+    char bp[MAX_PATH_LEN] = {0};
+    if(stat(path, &st) < 0 || !S_ISDIR(st.st_mode)) {
+        printf("invalid path: %s\n", path);
+        return;
+    }
+
+    if(!(d = opendir(path))) {
+        printf("opendir[%s] error: %m \n", path);
+        return;
+    }
+
+    while((dp = readdir(d)) != NULL) {
+        /* 把当前目录.，上一级目录..及隐藏文件都去掉，避免死循环遍历目录 */
+        if((!strncmp(dp->d_name, ".", 1)) || (!strncmp(dp->d_name, "..", 2)))
+            continue;
+
+        snprintf(p, sizeof(p) - 1, "%s/%s", path, dp->d_name);
+        snprintf(bp, sizeof(bp) - 1, "%s/%s", dest_path, dp->d_name);
+        stat(p, &st);
+        if(!S_ISDIR(st.st_mode)) {
+            //printf("%s\n", bp);
+            if(type == 0)
+                mknod(bp, S_IFIFO|0666, 0);
+            else if(type == 1)
+                creat(bp,0755);
+            if(mount(p, bp, "none", MS_BIND, NULL)){
+                printf("%s \n", bp);
+                perror("bind dev");
+            }
+        } else {
+            mkdir(bp ,0775);
+            if(strstr("net", dp->d_name))
+                trave_dir(p, bp, 0);
+            if(strstr("class", p) || strstr("device", p))
+                trave_dir(p, bp, 1);
+            printf("dir %s %s\n", p, bp);
+
+        }
+    }
+    closedir(d);
+
+    return;
+}
+
+int nsenternew(){
+    int fd = 0;
+    fd = open("containerc_roots/rootfs/var/run/netns/mynet",O_RDONLY);
+    if(fd)
+        if(setns(fd, 0)==-1)
+            perror("net ns");
+    return 0;
+}
+
+int en3get(){
+        /*绑定net namespace */
+    // if ( mount("/proc/self/ns/net", "./containerc_roots/rootfs/var/run/netns/mynet", "none", MS_BIND, NULL)!=0 ) {
+    //     perror("net");
+    // }
+
+    //nsenternew();
+    //trave_dir("/sys", "containerc_roots/rootfs/dev", 1);
+    // if (mount("sysfs", "containerc_roots/rootfs/sys", "sysfs", 0, NULL)!=0) {
+    //     perror("sys");
+    // } 0000:00:11.0/0000:02:01.0/net
+
+    if (mount("/sys/devices/pci0000:00/", "./containerc_roots/rootfs/sys/devices/pci0000:00/", "none", MS_BIND, NULL)!=0){
+        perror("device ens33");
+    }
+
+    if (mount("/sys/class/net/", "./containerc_roots/rootfs/sys/class/net", "none", MS_BIND, NULL)!=0){
+        perror("class ens33");
+    }
+}
+
+static void mount_root() 
+{
+
+
+    mount("none", "/", NULL, MS_REC|MS_PRIVATE, NULL);
+    //remount "/proc" to make sure the "top" and "ps" show container's information
+    if (mount("proc", "containerc_roots/rootfs/proc", "proc", 0, NULL) !=0 ) {
+        perror("proc");
+    }
+
+    en3get();
+
+    if (mount("none", "containerc_roots/rootfs/tmp", "tmpfs", 0, NULL)!=0) {
+        perror("tmp");
+    }
+
+    trave_dir("/dev", "containerc_roots/rootfs/dev", 0);
+    // if (mount("udev", "containerc_roots/rootfs/dev", "devtmpfs", 0, NULL)!=0) {
+    //     perror("dev");
+    // }
+    if (mount("devpts", "containerc_roots/rootfs/dev/pts", "devpts", 0, NULL)!=0) {
+        perror("dev/pts");
+    }
+    
+    if (mount("shm", "containerc_roots/rootfs/dev/shm", "tmpfs", 0, NULL)!=0) {
+        perror("dev/shm");
+    }
+   
+    if (mount("tmpfs", "containerc_roots/rootfs/run", "tmpfs", 0, NULL)!=0) {
+        perror("run");
+    }
+
+    /* 
+     * 模仿Docker的从外向容器里mount相关的配置文件 
+     * 你可以查看：/var/lib/docker/containers/<container_id>/目录，
+     * 你会看到docker的这些文件的。
+     */
+
+    if (mount("./containerc_roots/conf/hosts", "./containerc_roots/rootfs/etc/hosts", "none", MS_BIND, NULL)!=0 ||
+        mount("./containerc_roots/conf/hostname", "./containerc_roots/rootfs/etc/hostname", "none", MS_BIND, NULL)!=0 ||
+        mount("./containerc_roots/conf/resolv.conf", "./containerc_roots/rootfs/etc/resolv.conf", "none", MS_BIND, NULL)!=0 ) {
+        perror("conf 000");
+    }
+
+
+    /* 模仿docker run命令中的 -v, --volume=[] 参数干的事 */
+    if (mount("/tmp/t1", "./containerc_roots/rootfs/mnt", "none", MS_BIND, NULL)!=0) {
+        perror("mnt");
+    }
+
+
+    /* chroot 隔离目录 */
+    if (chdir("./containerc_roots/rootfs") != 0 || chroot("./") != 0){
+        perror("chdir/chroot");
+    }
+}
+
+static char container_stack[1024*1024];  //子进程栈空间大小 1M
+
+static char container_stack_pid[1024*1024]; 
+/**
+ * 设置挂载点
+ */
+
+void set_uid_map(pid_t pid, int inside_id, int outside_id, int length) {
+    char path[256];
+    sprintf(path, "/proc/%d/uid_map", pid);
+    FILE* uid_map = fopen(path, "w");
+    fprintf(uid_map, "%d %d %d", inside_id, outside_id, length);
+    fclose(uid_map);
+}
+void set_gid_map(pid_t pid, int inside_id, int outside_id, int length) {
+    char path[256];
+    sprintf(path, "/proc/%d/gid_map", pid);
+    FILE* gid_map = fopen(path, "w");
+    fprintf(gid_map, "%d %d %d", inside_id, outside_id, length);
+    fclose(gid_map);
+}
+
+
+static void setnewenv() 
+{
+    char *penv = getenv("PATH");
+    if (NULL == penv) {
+        setenv("PATH", "/bin/", 1);
+    } else {
+        char *new_path = malloc(sizeof(char)*(strlen(penv)+32));
+        sprintf(new_path, "%s:%s", penv, "/bin/");
+        setenv("PATH", new_path, 1);
+        free(new_path);
+    }
+}
+
+
 static int container_root(void *param){
     struct container_run_para *cparam = (struct container_run_para*)param;    
     //设置主机名
-    printf("host name %s \n", cparam->hostname);
+    printf("host name %s pid %d\n", cparam->hostname, getpid());
     sethostname(cparam->hostname, strlen(cparam->hostname));
 
     //设置环境变量
@@ -273,12 +297,17 @@ static int container_root(void *param){
     mount_root();
 
     sleep(1);
+    // veth_create("veth0", "veth1");
+    // veth_up("veth0");
+ 
+    // veth_addbr("veth0", "docker0");
 
     // veth_newname("veth1", "eth0");
-    // veth_up("eth0");        
-    // veth_config_ipv4("eth0", cparam->container_ip);
-
+    // veth_up("eth0");
+    // printf("ip %s \n", cparam->container_ip);
+    // veth_config_ipv4("eth0", "192.168.3.5");
     execv(container_args[0], container_args);
+    //execv(child_args[0], child_args);
     return 0;
 }
 
@@ -291,7 +320,7 @@ static int container_run(void *param)
 
     //stat = setuid(geteuid());
     struct container_run_para  para;
-        //获取container ip
+    //获取container ip
     char ipv4[32] = {0};
     //设置主机名
     pid_t child_pid;
@@ -308,11 +337,11 @@ static int container_run(void *param)
 
     // veth_create("veth0", "veth1");
     // veth_up("veth0");
-    // /* ??veth0????docker?????? */
+ 
     // veth_addbr("veth0", "docker0");
     
     
-    //  //获取container ip
+    // //  //获取container ip
     new_containerip(ipv4, sizeof(ipv4));
     
     para.hostname = (char *)param;
@@ -321,8 +350,9 @@ static int container_run(void *param)
 
     child_pid = clone(container_root,
                       container_stack_pid + sizeof(container_stack_pid),
-                      CLONE_NEWPID | CLONE_NEWNET | CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWIPC |SIGCHLD, 
+                      CLONE_NEWPID  | CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWIPC |SIGCHLD, 
                       &para);
+//| CLONE_NEWNET
     waitpid(child_pid, NULL, 0);
 
     return 0;

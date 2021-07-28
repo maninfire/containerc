@@ -66,6 +66,7 @@ int netlink_open(struct netlink_handle *handle, unsigned int groups)
             handle->local.nl_family);
         return -1;
     }
+    printf("netlinkg opened \n");
     return 0;
 }
 
@@ -90,7 +91,7 @@ int netlink_send(struct netlink_handle *handle, struct nlmsghdr *buffer)
         .msg_name = &nladdr,
         .msg_namelen = sizeof(nladdr),
         .msg_iov = &iov,
-        .msg_iovlen = 1, //表示有一个iovec结构
+        .msg_iovlen = 1, //锟斤拷示锟斤拷一锟斤拷iovec锟结构
     };
 
     status = sendmsg(handle->fd, &msg, 0);
@@ -170,7 +171,7 @@ int netlink_recv(struct netlink_handle *handle, char **response)
         .msg_name = &nladdr,
         .msg_namelen = sizeof(nladdr),
         .msg_iov = &iov,
-        .msg_iovlen = 1, //表示有一个iovec结构
+        .msg_iovlen = 1, //锟斤拷示锟斤拷一锟斤拷iovec锟结构
     };
 
     return rtnl_recvmsg(handle->fd, &msg, response);

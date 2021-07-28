@@ -14,12 +14,12 @@
 
 struct veth_request {
     struct nlmsghdr     header;
-    char                buf[1024]; /* Ä¬ÈÏ1024×ã¹»*/
+    char                buf[1024]; /* Ä¬ï¿½ï¿½1024ï¿½ã¹»*/
 };
 
 static int __veth_addattr(struct rtattr *rta, int type, const void *data, int alen)
 {
-    int len = RTA_LENGTH(alen);//¼ÆËãÊôÐÔËùÐèÒªµÄ³¤¶È
+    int len = RTA_LENGTH(alen);//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Òªï¿½Ä³ï¿½ï¿½ï¿½
     rta->rta_type = type;
     rta->rta_len = len;
     if (alen)
@@ -28,7 +28,7 @@ static int __veth_addattr(struct rtattr *rta, int type, const void *data, int al
 }
 
 /**
- * ´´½¨veth pair
+ * ï¿½ï¿½ï¿½ï¿½veth pair
  */
 void veth_create(const char *veth_name, const char *peer_veth_name) 
 {
@@ -51,31 +51,31 @@ void veth_create(const char *veth_name, const char *peer_veth_name)
     netlink_open(&handle, 0);
 
     start = req.buf;
-    /* netlink msg ÏûÏ¢ */    
+    /* netlink msg ï¿½ï¿½Ï¢ */    
     ifmsg_header = (struct ifinfomsg *)start;
     ifmsg_header->ifi_family = AF_UNSPEC;
     start += RTA_ALIGN(sizeof(struct ifinfomsg));
 
-    //* Ìí¼ÓÊôÐÔ: Ôö¼Óifname */
+    //* ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½: ï¿½ï¿½ï¿½ï¿½ifname */
     rta = (struct rtattr *)start;
     __veth_addattr(rta, IFLA_IFNAME, veth_name, strlen(veth_name)+1);
     start += RTA_ALIGN(rta->rta_len);
 
-    /* Ìí¼ÓÊôÐÔ: Ôö¼Ólink info */
+    /* ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½: ï¿½ï¿½ï¿½ï¿½link info */
     rta_linkinfo = (struct rtattr *)start;
     rta_linkinfo->rta_type = IFLA_LINKINFO;
     start += sizeof(struct rtattr);
 
-    /* Ìí¼ÓÊôÐÔ: Ôö¼Óinfo kind */
+    /* ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½: ï¿½ï¿½ï¿½ï¿½info kind */
     rta = (struct rtattr *)start;
     __veth_addattr(rta, IFLA_INFO_KIND, "veth", strlen("veth"));
     start += RTA_ALIGN(rta->rta_len);
 
-    /* Ìí¼ÓÊôÐÔ: Ôö¼Óinfo data */
+    /* ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½: ï¿½ï¿½ï¿½ï¿½info data */
     rta_infodata = (struct rtattr *)start;
     rta_infodata->rta_type = IFLA_INFO_DATA;
     start += sizeof(struct rtattr);
-    /* Ìí¼ÓÊôÐÔ: Ôö¼Ópeer info */
+    /* ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½: ï¿½ï¿½ï¿½ï¿½peer info */
     rta_infopeer= (struct rtattr *)start;
     rta_infopeer->rta_type = VETH_INFO_PEER;
     start += sizeof(struct rtattr);
@@ -84,7 +84,7 @@ void veth_create(const char *veth_name, const char *peer_veth_name)
     ifmsg_header->ifi_family = AF_UNSPEC;
     start += RTA_ALIGN(sizeof(struct ifinfomsg));
 
-    /*Ìí¼ÓÊôÐÔ: ÉèÖÃpeer vethÃû³Æ */
+    /*ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½: ï¿½ï¿½ï¿½ï¿½peer vethï¿½ï¿½ï¿½ï¿½ */
     rta = (struct rtattr *)start;
     __veth_addattr(rta, IFLA_IFNAME, peer_veth_name, strlen(peer_veth_name)+1);
     start += RTA_ALIGN(rta->rta_len);
@@ -99,7 +99,7 @@ void veth_create(const char *veth_name, const char *peer_veth_name)
     
     netlink_send(&handle, &req.header);
 
-    // ½ÓÊÕÏûÏ¢
+    // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢
     status = netlink_recv(&handle, &response);
     if (status > 0) {
         struct nlmsghdr *h = (struct nlmsghdr *)response;
@@ -108,7 +108,7 @@ void veth_create(const char *veth_name, const char *peer_veth_name)
             int error = err->error;
 
             if (!error) {
-                //´íÎóÎª0 ±íÊ¾Ã»ÓÐ¾ßÌå´íÎó
+                //ï¿½ï¿½ï¿½ï¿½Îª0 ï¿½ï¿½Ê¾Ã»ï¿½Ð¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
             } else {
                 errno = -error;              
                 fprintf(stderr, "ERROR: %s\n", strerror(-error));
@@ -140,7 +140,7 @@ void veth_up(const char *veth_name)
     netlink_open(&handle, 0);
 
     start = req.buf;
-    /* netlink msg ÏûÏ¢ */    
+    /* netlink msg ï¿½ï¿½Ï¢ */    
     ifmsg_header = (struct ifinfomsg *)start;
     ifmsg_header->ifi_family = AF_UNSPEC;
     ifmsg_header->ifi_index = if_nametoindex(veth_name);
@@ -151,7 +151,7 @@ void veth_up(const char *veth_name)
 
     netlink_send(&handle, &req.header);
 
-    // ½ÓÊÕÏûÏ¢
+    // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢
     status = netlink_recv(&handle, &response);
     if (status > 0) {
         struct nlmsghdr *h = (struct nlmsghdr *)response;
@@ -160,10 +160,10 @@ void veth_up(const char *veth_name)
             int error = err->error;
 
             if (!error) {
-                //´íÎóÎª0 ±íÊ¾Ã»ÓÐ¾ßÌå´íÎó
+                //ï¿½ï¿½ï¿½ï¿½Îª0 ï¿½ï¿½Ê¾Ã»ï¿½Ð¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
             } else {
                 errno = -error;              
-                fprintf(stderr, "ERROR: %s\n", strerror(-error));
+                fprintf(stderr, "veth_up ERROR:  %s\n", strerror(-error));
                 netlink_close(&handle);
                 exit(1);
             }            
@@ -231,7 +231,7 @@ void veth_config_ipv4(const char *veth_name, char *ipv4)
     netlink_open(&handle, 0);
 
     start = req.buf;
-    /* netlink msg ÏûÏ¢ */    
+    /* netlink msg ï¿½ï¿½Ï¢ */    
     ifaddrmsg_header = (struct ifaddrmsg *)start;
     ifaddrmsg_header->ifa_family = AF_INET;
     ifaddrmsg_header->ifa_prefixlen = mask;
@@ -240,12 +240,12 @@ void veth_config_ipv4(const char *veth_name, char *ipv4)
     ifaddrmsg_header->ifa_index = if_nametoindex(veth_name);
     start += RTA_ALIGN(sizeof(struct ifaddrmsg));   
     
-    //* Ìí¼ÓÊôÐÔ: Ôö¼Óif local */
+    //* ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½: ï¿½ï¿½ï¿½ï¿½if local */
     rta = (struct rtattr *)start;
     __veth_addattr(rta, IFA_LOCAL, ip, sizeof(ip));
     start += RTA_ALIGN(rta->rta_len);
 
-    /* Ìí¼ÓÊôÐÔ: Ôö¼Óif addr */
+    /* ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½: ï¿½ï¿½ï¿½ï¿½if addr */
     rta = (struct rtattr *)start;
     __veth_addattr(rta, IFA_ADDRESS, ip, sizeof(ip));
     start += RTA_ALIGN(rta->rta_len);
@@ -254,7 +254,7 @@ void veth_config_ipv4(const char *veth_name, char *ipv4)
     
     netlink_send(&handle, &req.header);
 
-    // ½ÓÊÕÏûÏ¢
+    // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢
     status = netlink_recv(&handle, &response);
     if (status > 0) {
         struct nlmsghdr *h = (struct nlmsghdr *)response;
@@ -263,7 +263,7 @@ void veth_config_ipv4(const char *veth_name, char *ipv4)
             int error = err->error;
 
             if (!error) {
-                //´íÎóÎª0 ±íÊ¾Ã»ÓÐ¾ßÌå´íÎó
+                //ï¿½ï¿½ï¿½ï¿½Îª0 ï¿½ï¿½Ê¾Ã»ï¿½Ð¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
             } else {
                 errno = -error;              
                 fprintf(stderr, "ERROR: %s\n", strerror(-error));
@@ -295,13 +295,13 @@ void veth_network_namespace(const char* veth_name, int child_pid)
     netlink_open(&handle, 0);
 
     start = req.buf;
-    /* netlink msg ÏûÏ¢ */    
+    /* netlink msg ï¿½ï¿½Ï¢ */    
     ifmsg_header = (struct ifinfomsg *)start;
     ifmsg_header->ifi_family = AF_UNSPEC;
     ifmsg_header->ifi_index = if_nametoindex(veth_name);
     start += RTA_ALIGN(sizeof(struct ifinfomsg));
 
-    /* ½«veth¼ÓÈëµ½ÐÂnetwork namesapceÖÐ */    
+    /* ï¿½ï¿½vethï¿½ï¿½ï¿½ëµ½ï¿½ï¿½network namesapceï¿½ï¿½ */    
     pid = child_pid;
     #if 1
     rta = (struct rtattr *)start;
@@ -322,7 +322,7 @@ void veth_network_namespace(const char* veth_name, int child_pid)
 
     netlink_send(&handle, &req.header);
 
-    // ½ÓÊÕÏûÏ¢
+    // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢
     status = netlink_recv(&handle, &response);
     if (status > 0) {
         struct nlmsghdr *h = (struct nlmsghdr *)response;
@@ -331,7 +331,7 @@ void veth_network_namespace(const char* veth_name, int child_pid)
             int error = err->error;
 
             if (!error) {
-                //´íÎóÎª0 ±íÊ¾Ã»ÓÐ¾ßÌå´íÎó
+                //ï¿½ï¿½ï¿½ï¿½Îª0 ï¿½ï¿½Ê¾Ã»ï¿½Ð¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
             } else {
                 errno = -error;              
                 fprintf(stderr, "ERROR: %s\n", strerror(-error));
@@ -367,13 +367,13 @@ void veth_newname(const char *veth_name, const char* newname)
     netlink_open(&handle, 0);
 
     start = req.buf;
-    /* netlink msg ÏûÏ¢ */    
+    /* netlink msg ï¿½ï¿½Ï¢ */    
     ifmsg_header = (struct ifinfomsg *)start;
     ifmsg_header->ifi_family = AF_UNSPEC;
     ifmsg_header->ifi_index = if_nametoindex(veth_name);
     start += RTA_ALIGN(sizeof(struct ifinfomsg));
     
-    //* Ìí¼ÓÊôÐÔ: Ôö¼Óif name */
+    //* ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½: ï¿½ï¿½ï¿½ï¿½if name */
     rta = (struct rtattr *)start;
     __veth_addattr(rta, IFLA_IFNAME, newname, strlen(newname)+1);
     start += RTA_ALIGN(rta->rta_len);
@@ -382,7 +382,7 @@ void veth_newname(const char *veth_name, const char* newname)
 
     netlink_send(&handle, &req.header);
 
-    // ½ÓÊÕÏûÏ¢
+    // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢
     status = netlink_recv(&handle, &response);
     if (status > 0) {
         struct nlmsghdr *h = (struct nlmsghdr *)response;
@@ -391,7 +391,7 @@ void veth_newname(const char *veth_name, const char* newname)
             int error = err->error;
 
             if (!error) {
-                //´íÎóÎª0 ±íÊ¾Ã»ÓÐ¾ßÌå´íÎó
+                //ï¿½ï¿½ï¿½ï¿½Îª0 ï¿½ï¿½Ê¾Ã»ï¿½Ð¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
             } else {
                 errno = -error;              
                 fprintf(stderr, "ERROR: %s\n", strerror(-error));
@@ -423,13 +423,13 @@ void veth_addbr(const char *veth_name, const char* brname)
     netlink_open(&handle, 0);
 
     start = req.buf;
-    /* netlink msg ÏûÏ¢ */    
+    /* netlink msg ï¿½ï¿½Ï¢ */    
     ifmsg_header = (struct ifinfomsg *)start;
     ifmsg_header->ifi_family = AF_UNSPEC;
     ifmsg_header->ifi_index = if_nametoindex(veth_name);
     start += RTA_ALIGN(sizeof(struct ifinfomsg));
     
-    //* Ìí¼ÓÊôÐÔ: Ôö¼Óif name */
+    //* ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½: ï¿½ï¿½ï¿½ï¿½if name */
     ifindex_br = if_nametoindex(brname);
     rta = (struct rtattr *)start;
     __veth_addattr(rta, IFLA_MASTER, &ifindex_br, 4);
@@ -439,7 +439,7 @@ void veth_addbr(const char *veth_name, const char* brname)
 
     netlink_send(&handle, &req.header);
 
-    // ½ÓÊÕÏûÏ¢
+    // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢
     status = netlink_recv(&handle, &response);
     if (status > 0) {
         struct nlmsghdr *h = (struct nlmsghdr *)response;
@@ -448,7 +448,7 @@ void veth_addbr(const char *veth_name, const char* brname)
             int error = err->error;
 
             if (!error) {
-                //´íÎóÎª0 ±íÊ¾Ã»ÓÐ¾ßÌå´íÎó
+                //ï¿½ï¿½ï¿½ï¿½Îª0 ï¿½ï¿½Ê¾Ã»ï¿½Ð¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
             } else {
                 errno = -error;              
                 fprintf(stderr, "ERROR: %s\n", strerror(-error));
