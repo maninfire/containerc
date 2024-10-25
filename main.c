@@ -8,23 +8,18 @@
 #include <sys/mount.h>
 #include "lib/veth.h"
 #include "lib/utils.h"
-
 #include <sys/capability.h>
 #include <sys/types.h>
-
 #include <errno.h>
-
 #include <signal.h>
-
-
 #include <sys/stat.h>
 #include <fcntl.h>
-
 #include <dirent.h>
+#include <net/if.h>
 
 #define NOT_OK_EXIT(code, msg); {if(code == -1){perror(msg); exit(-1);} }
 
-#define MAX_PATH_LEN (256)
+#define MAX_PATH_LEN (1024)
 
 struct container_run_para {
     char *container_ip;
@@ -289,7 +284,7 @@ static void setnewenv()
 static int container_root(void *param){
     struct container_run_para *cparam = (struct container_run_para*)param;    
     //设置主机名
-    printf("host name %s pid %d\n", cparam->hostname, getpid());
+    printf("host name %s pid %d uid %d gid %d\n", cparam->hostname, getpid(), getuid(), getegid());
     sethostname(cparam->hostname, strlen(cparam->hostname));
 
     //设置环境变量

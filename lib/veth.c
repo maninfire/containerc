@@ -5,13 +5,13 @@
 #include <sys/types.h>          /* See NOTES */
 #include <sys/socket.h>
 #include <linux/veth.h>
-#include <linux/if.h>
+//#include <linux/if.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include "netlink.h"
-
+#include <net/if.h>
 struct veth_request {
     struct nlmsghdr     header;
     char                buf[1024]; /* Ĭ��1024�㹻*/
