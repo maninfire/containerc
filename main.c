@@ -52,10 +52,10 @@ void list_caps() {
     if (ret < 0) {
         fprintf(stderr, "capget error: %s", strerror(errno));
     } else {
-        printf("Capabilities of process %8d is:", cap_header.pid);
-        printf(" CapInh: 0x%08x%08x", cap_data[1].inheritable, cap_data[0].inheritable);
-        printf(" CapEff: 0x%08x%08x", cap_data[1].effective, cap_data[0].effective);
-        printf(" CapPrm: 0x%08x%08x", cap_data[1].permitted, cap_data[0].permitted);
+        printf("Capabilities of process %8d is:\n", cap_header.pid);
+        printf(" CapInh: 0x%08x%08x \n", cap_data[1].inheritable, cap_data[0].inheritable);
+        printf(" CapEff: 0x%08x%08x \n", cap_data[1].effective, cap_data[0].effective);
+        printf(" CapPrm: 0x%08x%08x \n", cap_data[1].permitted, cap_data[0].permitted);
         printf("\n");
     }
 }
@@ -248,21 +248,55 @@ static char container_stack_pid[1024*1024];
  * 设置挂载点
  */
 
-void set_uid_map(pid_t pid, int inside_id, int outside_id, int length) {
-    char path[256];
-    sprintf(path, "/proc/%d/uid_map", pid);
-    FILE* uid_map = fopen(path, "w");
-    fprintf(uid_map, "%d %d %d", inside_id, outside_id, length);
-    fclose(uid_map);
+
+int set_uid_map(pid_t pid, int inside_id, int outside_id, int length) {
+    char path[256]={0};
+    char buf[128]={0}; // 确保这个缓冲区足够大以存放格式化后的字符串
+    int fd = 0;    
+    // 使用snprintf来避免潜在的缓冲区溢出
+    snprintf(path, sizeof(path), "/proc/%d/uid_map", pid);
+    fd = open(path, O_WRONLY);
+    if (fd == -1) {
+        perror("open");
+        return -1; // 返回错误代码
+    }
+
+    // 使用snprintf来格式化字符串，然后使用write来写入
+
+    if (snprintf(buf, sizeof(buf), "%d %d %d", inside_id, outside_id, length) >= sizeof(buf)) {
+        perror("snprintf");
+        close(fd);
+        return -1; // 缓冲区太小，无法容纳格式化后的字符串
+    }
+    printf("uid_map fd %d path [%s]; content: [%s] len %ld\n", fd, path, buf, strlen(buf));
+    ssize_t bytes_written = write(fd, buf, strlen(buf));
+    if (bytes_written == -1) {
+        perror("write");
+        close(fd);
+        return -1; // 写入失败
+    }
+
+    close(fd);
+    return 0; // 成功完成
 }
+
 void set_gid_map(pid_t pid, int inside_id, int outside_id, int length) {
     char path[256];
-    sprintf(path, "/proc/%d/gid_map", pid);
-    int fd = openat(AT_FDCWD, path, O_WRONLY);
-    if(fd)
-    write(fd, "0 1000 1", 8);
-    printf("gid_map fd %d %s %x\n",fd, path, AT_FDCWD);
-    //fprintf(gid_map, "%d %d %d", inside_id, outside_id, length);
+    char buf[32];
+    int fd;
+
+    snprintf(path, sizeof(path), "/proc/%d/gid_map", pid);
+    fd = open(path, O_WRONLY);
+    if (fd == -1) {
+        perror("open");
+        return;
+    }
+
+    snprintf(buf, sizeof(buf), "%d %d %d", inside_id, outside_id, length);
+    printf("gid_map fd %d path: [%s]; content [%s] len %ld\n", fd, path, buf, strlen(buf));    
+    if (write(fd, buf, strlen(buf)) == -1) {
+        perror("write");
+    }
     close(fd);
 }
 
@@ -316,7 +350,7 @@ void set_groups(){
 /**
  * 容器启动 -- 实际为子进程启动
  */
-static int container_run(void *param)
+static int container_run(void *param, int main_uid)
 {   
     int stat;
 
@@ -329,23 +363,25 @@ static int container_run(void *param)
     pid_t pid = getpid();
     
     list_caps();
-    printf("sub process ! %d uid %d gid %d  gid_cap %x\n", pid, getuid(), getegid(), CAP_SETGID);
+    printf("process ! %d uid %d gid %d  gid_cap %x\n", pid, getuid(), getegid(), CAP_SETGID);
     
-
+    printf("eUID = %ld;  eGID = %ld;  \n",
+            (long) geteuid(), (long) getegid());    
+    
+    set_all_cap();
     set_groups();
-    set_uid_map(pid, 0, 1000, 1);
-    set_gid_map(pid, 0, 1000, 1);
+    set_uid_map(pid, 0, main_uid, 1);
+    set_gid_map(pid, 0, main_uid, 1);
 
     printf("eUID = %ld;  eGID = %ld;  \n",
             (long) geteuid(), (long) getegid());
-    set_all_cap();
+
 
     // veth_create("veth0", "veth1");
     // veth_up("veth0");
  
     // veth_addbr("veth0", "docker0");
-    
-    
+        
     // //  //获取container ip
     new_containerip(ipv4, sizeof(ipv4));
     
@@ -358,6 +394,7 @@ static int container_run(void *param)
                       CLONE_NEWPID  | CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWIPC |SIGCHLD, 
                       &para);
 //| CLONE_NEWNET
+
     waitpid(child_pid, NULL, 0);
 
     return 0;
@@ -366,39 +403,37 @@ static int container_run(void *param)
 int main(int argc, char *argv[])
 {
     struct container_run_para  para;
-    pid_t child_pid;
-    char ipv4[32] = {0};
+    int main_uid;
 
+    char ipv4[32] = {0};
+    main_uid = getuid();
+    printf("process uid %d gid %d  gid_cap %x\n", getuid(), getegid(), CAP_SETGID);
     if (argc < 2) {
         printf("Usage: %s <child-hostname>\n", argv[0]);
         return -1;
     }
-    // //获取docker0网卡ip地址
+    //获取docker0网卡ip地址
     if(unshare(CLONE_NEWUSER)!=0){
         printf("failed to create new user namespace \n");
     }
     
- /**
+    /**
      * 1、创建并启动子进程，调用该函数后，父进程将继续往后执行，也就是执行后面的waitpid
      * 2、栈是从高位向低位增长，所以这里要指向高位地址
      * 3、SIGCHLD 表示子进程退出后 会发送信号给父进程 与容器技术无关
      * 4、创建各个namespace
      */
-    container_run(argv[1]);
+    
+    container_run( argv[1], main_uid );
     // child_pid = clone(container_run,
     //                   container_stack + sizeof(container_stack),
     //                   CLONE_NEWUSER | SIGCHLD, 
     //                   argv[1]);
 
- //                     CLONE_NEWPID|CLONE_NEWNET|CLONE_NEWNS|CLONE_NEWUTS| SIGCHLD,
-    /* ??veth???????namespace?? */
+    //                     CLONE_NEWPID|CLONE_NEWNET|CLONE_NEWNS|CLONE_NEWUTS| SIGCHLD,
+
     //veth_network_namespace("veth1", child_pid);
     
-   // NOT_OK_EXIT(child_pid, "clone");
-
-    /* ??????????? */
-    waitpid(child_pid, NULL, 0);
-
     return 0;
 }
 
