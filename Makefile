@@ -4,13 +4,13 @@ prom = containerc
 obj = main.o netlink.o veth.o utils.o
 
 $(prom): $(obj)
-	@set -e
-	@if [ -f ./containerc_roots.tar.gz ]; then \
-		tar -zxf ./containerc_roots.tar.gz; \
-	else \
-		echo "ROOTFS Is Not Exist"; \
-		exit 1; \
-	fi
+	# @set -e
+	# @if [ -f ./containerc_roots.tar.gz ]; then \
+	# 	tar -zxf ./containerc_roots.tar.gz; \
+	# else \
+	# 	echo "ROOTFS Is Not Exist"; \
+	# 	exit 1; \
+	# fi
 	$(cc) -o $(prom) $(obj) -lcap -Wall
 
 utils.o: lib/utils.c

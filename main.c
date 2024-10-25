@@ -16,6 +16,7 @@
 #include <fcntl.h>
 #include <dirent.h>
 #include <net/if.h>
+#include <grp.h>
 
 #define NOT_OK_EXIT(code, msg); {if(code == -1){perror(msg); exit(-1);} }
 
@@ -263,12 +264,14 @@ int set_uid_map(pid_t pid, int inside_id, int outside_id, int length) {
 
     // 使用snprintf来格式化字符串，然后使用write来写入
 
-    if (snprintf(buf, sizeof(buf), "%d %d %d", inside_id, outside_id, length) >= sizeof(buf)) {
+    if (snprintf(buf, sizeof(buf), "%d %d %d", 
+                    inside_id, outside_id, length) >= sizeof(buf)) {
         perror("snprintf");
         close(fd);
         return -1; // 缓冲区太小，无法容纳格式化后的字符串
     }
-    printf("uid_map fd %d path [%s]; content: [%s] len %ld\n", fd, path, buf, strlen(buf));
+    printf("uid_map fd %d path [%s]; content: [%s] len %ld\n", 
+                                        fd, path, buf, strlen(buf));
     ssize_t bytes_written = write(fd, buf, strlen(buf));
     if (bytes_written == -1) {
         perror("write");
@@ -293,7 +296,8 @@ void set_gid_map(pid_t pid, int inside_id, int outside_id, int length) {
     }
 
     snprintf(buf, sizeof(buf), "%d %d %d", inside_id, outside_id, length);
-    printf("gid_map fd %d path: [%s]; content [%s] len %ld\n", fd, path, buf, strlen(buf));    
+    printf("gid_map fd %d path: [%s]; content [%s] len %ld\n",
+                                         fd, path, buf, strlen(buf));    
     if (write(fd, buf, strlen(buf)) == -1) {
         perror("write");
     }
@@ -314,6 +318,45 @@ static void setnewenv()
     }
 }
 
+int get_groups_show(){
+    gid_t *groups;
+    int ngroups = getgroups(0, NULL);
+    if (ngroups == -1) {
+        perror("getgroups");
+        exit(EXIT_FAILURE);
+    }
+
+    // 分配内存来存储组 ID 列表
+    groups = (gid_t *)malloc(ngroups * sizeof(gid_t));
+    if (groups == NULL) {
+        perror("malloc");
+        exit(EXIT_FAILURE);
+    }
+
+    // 获取组 ID 列表
+    if (getgroups(ngroups, groups) == -1) {
+        perror("getgroups");
+        free(groups);
+        exit(EXIT_FAILURE);
+    }
+
+    // 获取并输出每个组的名称
+    printf("Current user belongs to the following groups:\n");
+    for (int i = 0; i < ngroups; i++) {
+        struct group *grp = getgrgid(groups[i]);
+        if (grp != NULL) {
+            printf("%s ", grp->gr_name);
+        } else {
+            printf("%d ", groups[i]);
+        }
+    }
+    printf("\n");
+
+    // 释放内存
+    free(groups);
+    return 0;
+}
+
 
 static int container_root(void *param){
     struct container_run_para *cparam = (struct container_run_para*)param;    
@@ -326,6 +369,22 @@ static int container_root(void *param){
     mount_root();
 
     sleep(1);
+    set_all_cap();
+    gid_t groups[] = {0};
+   size_t ngroups = sizeof(groups) / sizeof(groups[0]);
+
+    // 设置补充组列表
+    // if (setgroups(1, groups) == -1) {
+    //     perror("setgroups");
+    //     exit(EXIT_FAILURE);
+    // }
+    // printf("Current process supplementary groups:\n");
+
+//     int i;
+//     for (i = 0; i < ngroups; i++) {
+//         printf("Group ID: %d\n", groups[i]);
+//     }
+//get_groups_show();
     // veth_create("veth0", "veth1");
     // veth_up("veth0");
  
@@ -340,11 +399,25 @@ static int container_root(void *param){
     return 0;
 }
 
+void set_groups(char *cmd, int main_uid) {
 
-void set_groups(){
-    int fd = openat(AT_FDCWD, "/proc/self/setgroups", O_WRONLY);
-    if(fd)
-    write(3, "deny", 4);
+    char buf[100];
+    int fd;
+
+    snprintf(buf, sizeof(buf), "/proc/%d/setgroups", main_uid);    
+    if(!cmd)
+        return;
+    fd = openat(AT_FDCWD, buf, O_WRONLY);
+    if (fd == -1) {
+        perror("openat");
+        return;
+    }
+
+    // 清空补充组列表
+    if (write(fd, cmd, strlen(cmd)) == -1) {
+        perror("write");
+    }
+
     close(fd);
 }
 /**
@@ -369,14 +442,14 @@ static int container_run(void *param, int main_uid)
             (long) geteuid(), (long) getegid());    
     
     set_all_cap();
-    set_groups();
+    set_groups( "deny", pid );
     set_uid_map(pid, 0, main_uid, 1);
     set_gid_map(pid, 0, main_uid, 1);
 
     printf("eUID = %ld;  eGID = %ld;  \n",
             (long) geteuid(), (long) getegid());
-
-
+    // set_all_cap();            
+    // set_groups("allow", pid);
     // veth_create("veth0", "veth1");
     // veth_up("veth0");
  
